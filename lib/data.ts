@@ -248,11 +248,15 @@ export async function getGiftsPageData(opts: {
   q?: string;
   method?: string;
   campaign?: string;
+  from?: string;
+  to?: string;
+  min?: number;
+  max?: number;
 }) {
   const [gifts, donors, campaigns] = await Promise.all([
-    fetchAll("gifts"),
-    fetchAll("donors"),
-    fetchAll("campaigns"),
+    fetchAll<GiftRow>("gifts"),
+    fetchAll<DonorRow>("donors"),
+    fetchAll<CampaignRow>("campaigns"),
   ]);
   const donorById = new Map(donors.map((d) => [d.id, d]));
   const campaignById = new Map(campaigns.map((c) => [c.id, c]));
@@ -262,13 +266,17 @@ export async function getGiftsPageData(opts: {
     amount: num(g.amount),
     donor: donorById.get(g.donor_id),
     donorName: donorName(donorById.get(g.donor_id)),
-    campaignName: campaignById.get(g.campaign_id)?.name || "—",
+    campaignName: (g.campaign_id ? campaignById.get(g.campaign_id)?.name : null) || "—",
   }));
 
   if (opts.method && opts.method !== "all")
     rows = rows.filter((r) => r.payment_method === opts.method);
   if (opts.campaign && opts.campaign !== "all")
     rows = rows.filter((r) => r.campaign_id === opts.campaign);
+  if (opts.from) rows = rows.filter((r) => r.gift_date >= opts.from!);
+  if (opts.to) rows = rows.filter((r) => r.gift_date <= opts.to!);
+  if (opts.min != null) rows = rows.filter((r) => r.amount >= opts.min!);
+  if (opts.max != null) rows = rows.filter((r) => r.amount <= opts.max!);
   if (opts.q) {
     const n = opts.q.toLowerCase();
     rows = rows.filter(
