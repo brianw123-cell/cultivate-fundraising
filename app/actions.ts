@@ -1,0 +1,211 @@
+"use server";
+
+import { z } from "zod";
+import { getSupabase } from "@/lib/supabase";
+import { revalidatePath } from "next/cache";
+import { CURRENT_YEAR, DEMO_TODAY, RECEIPT_PREFIX, processingFee } from "@/lib/config";
+
+// ---- validation schemas ------------------------------------------------
+
+const DonationSchema = z.object({
+  amount: z.number().positive().max(1_000_000),
+  frequency: z.enum(["one-time", "monthly"]),
+  name: z.string().min(1).max(200),
+  email: z.string().email(),
+  campaignId: z.string().uuid(),
+  coverFee: z.boolean(),
+  tributeName: z.string().max(200).optional(),
+  tributeType: z.string().max(40).optional(),
+  cardLast4: z.string().max(4).optional(),
+  cardBrand: z.string().max(40).optional(),
+});
+
+const ManualGiftSchema = z.object({
+  donorId: z.string().uuid(),
+  amount: z.number().positive().max(1_000_000),
+  campaignId: z.string().uuid(),
+  method: z.enum(["cash", "check", "card"]),
+  giftDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  note: z.string().max(500).optional(),
+});
+
+export type DonationInput = z.infer<typeof DonationSchema>;
+export type ManualGiftInput = z.infer<typeof ManualGiftSchema>;
+
+// ---- helpers -----------------------------------------------------------
+
+function splitName(full: string): { first: string; last: string } {
+  const parts = full.trim().split(/\s+/);
+  if (parts.length === 1) return { first: parts[0] || "Friend", last: "" };
+  return { first: parts.slice(0, -1).join(" "), last: parts[parts.length - 1] };
+}
+
+async function nextReceiptNumber(sb: ReturnType<typeof getSupabase>): Promise<string> {
+  // Primary: atomic, race-free sequence (migration: receipt_number_sequence).
+  const { data, error } = await sb.rpc("next_receipt_number");
+  if (!error && typeof data === "string") return data;
+  // Fallback only if the RPC is unavailable: count-based (NOT concurrency-safe).
+  const { count } = await sb
+    .from("gifts")
+    .select("*", { count: "exact", head: true })
+    .like("receipt_number", `${RECEIPT_PREFIX}-${CURRENT_YEAR}-%`);
+  const n = (count || 0) + 1;
+  return `${RECEIPT_PREFIX}-${CURRENT_YEAR}-${String(n).padStart(5, "0")}`;
+}
+
+// ---- actions -----------------------------------------------------------
+
+export async function processDonation(raw: DonationInput) {
+  const parsed = DonationSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false as const, error: "Invalid donation details." };
+  const input = parsed.data;
+
+  const sb = getSupabase();
+  const { data: org } = await sb.from("organizations").select("id").limit(1).single();
+  if (!org) return { ok: false as const, error: "No organization configured." };
+
+  // match or create donor by email
+  let donorId: string | null = null;
+  const { data: existing } = await sb
+    .from("donors")
+    .select("id")
+    .eq("email", input.email.toLowerCase())
+    .limit(1)
+    .maybeSingle();
+
+  if (existing) {
+    donorId = existing.id;
+  } else {
+    const { first, last } = splitName(input.name);
+    const { data: nd } = await sb
+      .from("donors")
+      .insert({
+        org_id: org.id,
+        type: "individual",
+        first_name: first,
+        last_name: last,
+        email: input.email.toLowerCase(),
+        donor_since: DEMO_TODAY,
+        tags: ["online"],
+      })
+      .select("id")
+      .single();
+    donorId = nd?.id ?? null;
+  }
+  if (!donorId) return { ok: false as const, error: "Could not create donor record." };
+
+  const amount = input.amount;
+  const fee = processingFee(amount);
+  const net = input.coverFee ? amount : amount - fee;
+
+  let planId: string | null = null;
+  if (input.frequency === "monthly") {
+    const { data: plan } = await sb
+      .from("recurring_plans")
+      .insert({
+        org_id: org.id,
+        donor_id: donorId,
+        campaign_id: input.campaignId,
+        amount,
+        frequency: "monthly",
+        status: "active",
+        payment_method: "card",
+        card_brand: input.cardBrand || "Visa",
+        card_last4: input.cardLast4 || "4242",
+        started_at: DEMO_TODAY,
+        next_charge_date: "2026-07-08",
+      })
+      .select("id")
+      .single();
+    planId = plan?.id ?? null;
+  }
+
+  const receipt = await nextReceiptNumber(sb);
+
+  const { data: gift } = await sb
+    .from("gifts")
+    .insert({
+      org_id: org.id,
+      donor_id: donorId,
+      campaign_id: input.campaignId,
+      recurring_plan_id: planId,
+      amount,
+      fee_amount: fee,
+      fee_covered: input.coverFee,
+      net_amount: net,
+      fmv_amount: 0,
+      gift_date: DEMO_TODAY,
+      payment_method: "card",
+      card_brand: input.cardBrand || "Visa",
+      card_last4: input.cardLast4 || "4242",
+      is_recurring: input.frequency === "monthly",
+      tribute_type: input.tributeType || null,
+      tribute_name: input.tributeName || null,
+      status: "completed",
+      receipt_number: receipt,
+      receipt_sent: true,
+      acknowledged: false,
+    })
+    .select("id")
+    .single();
+
+  revalidatePath("/dashboard");
+  revalidatePath("/gifts");
+  revalidatePath("/donors");
+  revalidatePath("/campaigns");
+
+  return { ok: true as const, giftId: gift?.id, receipt };
+}
+
+export async function acknowledgeGift(giftId: string) {
+  if (!z.string().uuid().safeParse(giftId).success) {
+    return { ok: false as const, error: "Invalid gift id." };
+  }
+  const sb = getSupabase();
+  await sb.from("gifts").update({ acknowledged: true, acknowledged_at: DEMO_TODAY }).eq("id", giftId);
+  revalidatePath("/stewardship");
+  revalidatePath("/dashboard");
+  return { ok: true as const };
+}
+
+export async function addManualGift(raw: ManualGiftInput) {
+  const parsed = ManualGiftSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false as const, error: "Invalid gift details." };
+  const input = parsed.data;
+
+  const sb = getSupabase();
+  const { data: org } = await sb.from("organizations").select("id").limit(1).single();
+  if (!org) return { ok: false as const, error: "No organization configured." };
+
+  const amount = input.amount;
+  const fee = input.method === "card" ? processingFee(amount) : 0;
+  const receipt = await nextReceiptNumber(sb);
+
+  const { data: gift } = await sb
+    .from("gifts")
+    .insert({
+      org_id: org.id,
+      donor_id: input.donorId,
+      campaign_id: input.campaignId,
+      amount,
+      fee_amount: fee,
+      net_amount: amount - fee,
+      gift_date: input.giftDate,
+      payment_method: input.method,
+      is_recurring: false,
+      status: "completed",
+      receipt_number: receipt,
+      receipt_sent: false,
+      acknowledged: false,
+      note: input.note || null,
+    })
+    .select("id")
+    .single();
+
+  revalidatePath("/gifts");
+  revalidatePath("/dashboard");
+  revalidatePath("/donors");
+  revalidatePath("/stewardship");
+
+  return { ok: true as const, giftId: gift?.id, receipt };
+}

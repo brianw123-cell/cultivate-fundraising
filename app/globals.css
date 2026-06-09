@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-display: "Fraunces", Georgia, serif;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: clip;
+}
+
+body {
+  background-color: #faf8f3;
+  color: #14201a;
+  overflow-x: clip;
+  max-width: 100%;
+}
+
+/* Subtle grid texture for marketing hero */
+.bg-grid {
+  background-image: linear-gradient(rgba(27, 67, 50, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(27, 67, 50, 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.bg-radial-forest {
+  background: radial-gradient(
+    1200px 600px at 70% -10%,
+    rgba(82, 183, 136, 0.18),
+    transparent 60%
+  );
+}
+
+/* Thin scrollbars in the app shell */
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: rgba(20, 32, 26, 0.15);
+  border-radius: 8px;
+}
+
+/* Print styling for receipts and statements */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white;
+  }
+  .print-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.animate-spin-slow {
+  animation: spin 1s linear infinite;
+}
