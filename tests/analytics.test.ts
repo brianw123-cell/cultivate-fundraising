@@ -13,6 +13,7 @@ import {
   appealMetrics,
   classifyDonors,
   prospectGap,
+  pledgeSummary,
 } from "@/lib/analytics";
 
 const gifts: any[] = [
@@ -177,5 +178,38 @@ describe("prospectGap", () => {
     expect(prospectGap(50000, 5000)).toEqual({ gap: 45000, underutilized: true });
     expect(prospectGap(10000, 9000)).toEqual({ gap: 1000, underutilized: false });
     expect(prospectGap(0, 0)).toEqual({ gap: 0, underutilized: false });
+  });
+});
+
+describe("pledgeSummary", () => {
+  it("computes burn-down, overdue, and next due", () => {
+    const installments = [
+      { amount: 100, status: "paid", due_date: "2026-01-01" },
+      { amount: 100, status: "paid", due_date: "2026-02-01" },
+      { amount: 100, status: "overdue", due_date: "2026-03-01" },
+      { amount: 100, status: "pending", due_date: "2026-07-01" },
+      { amount: 100, status: "pending", due_date: "2026-08-01" },
+    ];
+    const s = pledgeSummary(installments, 500);
+    expect(s.paid).toBe(200);
+    expect(s.outstanding).toBe(300);
+    expect(s.overdueCount).toBe(1);
+    expect(s.overdueAmount).toBe(100);
+    expect(s.nextDue).toBe("2026-03-01");
+    expect(s.pctPaid).toBe(40);
+  });
+
+  it("handles written-off installments", () => {
+    const s = pledgeSummary(
+      [
+        { amount: 100, status: "paid", due_date: "2026-01-01" },
+        { amount: 400, status: "written_off", due_date: "2026-02-01" },
+      ],
+      500
+    );
+    expect(s.paid).toBe(100);
+    expect(s.outstanding).toBe(0);
+    expect(s.writtenOff).toBe(400);
+    expect(s.pctPaid).toBe(20);
   });
 });

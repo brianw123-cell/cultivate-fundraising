@@ -32,6 +32,48 @@ const ManualGiftSchema = z.object({
 export type DonationInput = z.infer<typeof DonationSchema>;
 export type ManualGiftInput = z.infer<typeof ManualGiftSchema>;
 
+const uuid = z.string().uuid();
+
+export async function writeOffPledge(pledgeId: string) {
+  if (!uuid.safeParse(pledgeId).success) return { ok: false as const, error: "Invalid pledge id." };
+  const sb = getSupabase();
+  await sb.from("pledges").update({ status: "written_off" }).eq("id", pledgeId);
+  await sb
+    .from("pledge_installments")
+    .update({ status: "written_off" })
+    .eq("pledge_id", pledgeId)
+    .in("status", ["pending", "overdue"]);
+  revalidatePath("/pledges");
+  revalidatePath(`/pledges/${pledgeId}`);
+  return { ok: true as const };
+}
+
+export async function recordPledgePayment(pledgeId: string) {
+  if (!uuid.safeParse(pledgeId).success) return { ok: false as const, error: "Invalid pledge id." };
+  const sb = getSupabase();
+  const { data: next } = await sb
+    .from("pledge_installments")
+    .select("id")
+    .eq("pledge_id", pledgeId)
+    .in("status", ["overdue", "pending"])
+    .order("due_date", { ascending: true })
+    .limit(1);
+  if (!next || next.length === 0) return { ok: false as const, error: "No remaining installments." };
+
+  await sb.from("pledge_installments").update({ status: "paid", paid_date: DEMO_TODAY }).eq("id", next[0].id);
+
+  const { count } = await sb
+    .from("pledge_installments")
+    .select("*", { count: "exact", head: true })
+    .eq("pledge_id", pledgeId)
+    .in("status", ["overdue", "pending"]);
+  if ((count || 0) === 0) await sb.from("pledges").update({ status: "completed" }).eq("id", pledgeId);
+
+  revalidatePath("/pledges");
+  revalidatePath(`/pledges/${pledgeId}`);
+  return { ok: true as const };
+}
+
 // ---- helpers -----------------------------------------------------------
 
 function splitName(full: string): { first: string; last: string } {

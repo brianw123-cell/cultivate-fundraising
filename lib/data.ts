@@ -21,6 +21,7 @@ import {
   appealMetrics,
   classifyDonors,
   prospectGap,
+  pledgeSummary,
   SEGMENT_DEFS,
 } from "./analytics";
 import type {
@@ -29,6 +30,7 @@ import type {
   CampaignRow,
   RecurringPlanRow,
   AppealRow,
+  PledgeInstallmentRow,
 } from "./types";
 
 // ---- low level helpers -------------------------------------------------
@@ -133,26 +135,13 @@ export async function getDashboardData() {
 // ---- donors ------------------------------------------------------------
 
 export async function getDonorsPageData(q?: string) {
-  const [donors, gifts] = await Promise.all([fetchAll("donors"), fetchAll("gifts")]);
-  const byDonor = new Map<string, { total: number; count: number; last: string }>();
-  gifts.forEach((g) => {
-    const cur = byDonor.get(g.donor_id) || { total: 0, count: 0, last: "" };
-    cur.total += num(g.amount);
-    cur.count += 1;
-    if (g.gift_date > cur.last) cur.last = g.gift_date;
-    byDonor.set(g.donor_id, cur);
-  });
-
-  let rows = donors.map((d) => {
-    const stats = byDonor.get(d.id) || { total: 0, count: 0, last: "" };
-    return {
-      ...d,
-      name: donorName(d),
-      lifetime: stats.total,
-      giftCount: stats.count,
-      lastGift: stats.last || null,
-    };
-  });
+  const [donors, gifts, plans] = await Promise.all([
+    fetchAll<DonorRow>("donors"),
+    fetchAll<GiftRow>("gifts"),
+    fetchAll<RecurringPlanRow>("recurring_plans"),
+  ]);
+  // classifyDonors gives name, lifetime, lastGift, giftCount, segKeys per donor
+  let rows = classifyDonors(donors, gifts, plans);
 
   if (q) {
     const needle = q.toLowerCase();
@@ -314,24 +303,28 @@ export async function getRecurringPageData() {
 
 // ---- reports -----------------------------------------------------------
 
-export async function getReportsData() {
+export async function getReportsData(scopeYear?: number) {
   const [gifts, donors] = await Promise.all([
     fetchAll<GiftRow>("gifts"),
     fetchAll<DonorRow>("donors"),
   ]);
   const { lybunt, sybunt } = lybuntSybunt(gifts, CURRENT_YEAR, PRIOR_YEAR);
+  // Composition metrics scope to the selected year; multi-year metrics
+  // (year-over-year, retention, LYBUNT/SYBUNT) always reflect all history.
+  const scoped = scopeYear ? gifts.filter((g) => yearOf(g.gift_date) === scopeYear) : gifts;
   return {
+    scope: scopeYear ?? ("all" as const),
     years: givingByYear(gifts),
     lybunt,
     sybunt,
     retention: donorRetention(gifts, PRIOR_YEAR_2, PRIOR_YEAR).rate,
-    byMethod: byPaymentMethod(gifts),
-    brackets: giftSizeBrackets(gifts),
-    totalRaised: Math.round(sumAmount(gifts)),
-    totalGifts: gifts.length,
+    byMethod: byPaymentMethod(scoped),
+    brackets: giftSizeBrackets(scoped),
+    totalRaised: Math.round(sumAmount(scoped)),
+    totalGifts: scoped.length,
     totalDonors: donors.length,
-    needsAck: gifts.filter((g) => num(g.amount) >= ACK_THRESHOLD).length,
-    quidProQuo: gifts.filter((g) => num(g.fmv_amount) > 0).length,
+    needsAck: scoped.filter((g) => num(g.amount) >= ACK_THRESHOLD).length,
+    quidProQuo: scoped.filter((g) => num(g.fmv_amount) > 0).length,
   };
 }
 
@@ -628,6 +621,75 @@ export async function getTopStatementDonors(year: number) {
     .map(([id, total]) => ({ id, name: donorName(donorById.get(id)), total }))
     .sort((a, b) => b.total - a.total)
     .slice(0, 8);
+}
+
+// ---- pledges -----------------------------------------------------------
+
+export async function getPledgesPageData() {
+  const sb = getSupabase();
+  const [{ data: pledges }, insts, donors, campaigns] = await Promise.all([
+    sb.from("pledges").select("*").order("created_at", { ascending: false }),
+    fetchAll<PledgeInstallmentRow>("pledge_installments"),
+    fetchAll<DonorRow>("donors"),
+    fetchAll<CampaignRow>("campaigns"),
+  ]);
+  const donorById = new Map(donors.map((d) => [d.id, d]));
+  const campById = new Map(campaigns.map((c) => [c.id, c]));
+  const instByPledge = new Map<string, PledgeInstallmentRow[]>();
+  insts.forEach((i) => {
+    const a = instByPledge.get(i.pledge_id) || [];
+    a.push(i);
+    instByPledge.set(i.pledge_id, a);
+  });
+
+  const rows = (pledges || []).map((p: any) => {
+    const s = pledgeSummary(instByPledge.get(p.id) || [], p.total_amount);
+    return {
+      id: p.id,
+      donorId: p.donor_id,
+      donorName: donorName(donorById.get(p.donor_id)),
+      campaignName: (p.campaign_id ? campById.get(p.campaign_id)?.name : null) || "—",
+      total: num(p.total_amount),
+      frequency: p.frequency,
+      status: p.status,
+      paid: s.paid,
+      outstanding: s.outstanding,
+      nextDue: s.nextDue,
+      pctPaid: s.pctPaid,
+      overdueCount: s.overdueCount,
+      overdueAmount: s.overdueAmount,
+    };
+  });
+
+  const stats = {
+    totalPledged: Math.round(rows.filter((r) => r.status !== "written_off").reduce((s, r) => s + r.total, 0)),
+    outstanding: Math.round(rows.reduce((s, r) => s + r.outstanding, 0)),
+    overdueAmount: Math.round(rows.reduce((s, r) => s + r.overdueAmount, 0)),
+    overduePledges: rows.filter((r) => r.overdueCount > 0).length,
+    count: rows.length,
+  };
+
+  return { rows, stats, attention: rows.filter((r) => r.overdueCount > 0).sort((a, b) => b.overdueAmount - a.overdueAmount) };
+}
+
+export async function getPledgeDetail(id: string) {
+  const sb = getSupabase();
+  const [{ data: pledge }, { data: insts }] = await Promise.all([
+    sb.from("pledges").select("*, donor:donors(*), campaign:campaigns(name,slug,accent)").eq("id", id).single(),
+    sb.from("pledge_installments").select("*").eq("pledge_id", id).order("seq", { ascending: true }),
+  ]);
+  if (!pledge) return null;
+  const installments = (insts || []).map((i: any) => ({ ...i, amount: num(i.amount) }));
+  const summary = pledgeSummary(insts || [], pledge.total_amount);
+  return {
+    pledge: { ...pledge, total: num(pledge.total_amount), installmentAmount: num(pledge.installment_amount) },
+    donor: pledge.donor,
+    name: donorName(pledge.donor),
+    campaign: pledge.campaign?.name,
+    accent: pledge.campaign?.accent || "#2D6A4F",
+    installments,
+    summary,
+  };
 }
 
 export async function getDonorsLite() {

@@ -87,9 +87,8 @@ export function GiftsFilters({ campaigns }: { campaigns: { id: string; name: str
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-ink/55">Date range</label>
-              <div className="flex items-center gap-2">
+              <div className="space-y-2">
                 <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={field} />
-                <span className="text-ink/40">–</span>
                 <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={field} />
               </div>
             </div>
@@ -101,7 +100,7 @@ export function GiftsFilters({ campaigns }: { campaigns: { id: string; name: str
                   placeholder="Min"
                   value={min}
                   onChange={(e) => setMin(e.target.value.replace(/[^0-9.]/g, ""))}
-                  className={field}
+                  className={field + " min-w-0"}
                 />
                 <span className="text-ink/40">–</span>
                 <input
@@ -109,7 +108,7 @@ export function GiftsFilters({ campaigns }: { campaigns: { id: string; name: str
                   placeholder="Max"
                   value={max}
                   onChange={(e) => setMax(e.target.value.replace(/[^0-9.]/g, ""))}
-                  className={field}
+                  className={field + " min-w-0"}
                 />
               </div>
             </div>

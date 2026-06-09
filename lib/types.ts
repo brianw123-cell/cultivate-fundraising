@@ -95,3 +95,27 @@ export type AppealRow = {
   cost: number | string | null;
   sent_date: string | null;
 };
+
+export type PledgeRow = {
+  id: string;
+  org_id: string;
+  donor_id: string;
+  campaign_id: string | null;
+  total_amount: number | string;
+  frequency: string;
+  installment_count: number;
+  installment_amount: number | string;
+  start_date: string;
+  status: string;
+};
+
+export type PledgeInstallmentRow = {
+  id: string;
+  pledge_id: string;
+  org_id: string;
+  seq: number;
+  due_date: string;
+  amount: number | string;
+  status: string;
+  paid_date: string | null;
+};

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import { SortableTable, type SortColumn } from "@/components/SortableTable";
 import { Badge, avatarColor } from "@/components/ui";
 import { money, compactMoney, initials, capacityTier, affinityLabel } from "@/lib/format";
@@ -16,6 +17,9 @@ type Row = {
   indicators: string[];
 };
 
+const sel =
+  "rounded-lg border border-forest-900/12 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-forest-500";
+
 function AffinityPill({ score }: { score: number }) {
   const color = score >= 70 ? "green" : score >= 40 ? "gold" : "gray";
   return (
@@ -26,6 +30,23 @@ function AffinityPill({ score }: { score: number }) {
 }
 
 export function ProspectsTable({ rows }: { rows: Row[] }) {
+  const [tier, setTier] = useState("all");
+  const [aff, setAff] = useState("all");
+  const [indOnly, setIndOnly] = useState(false);
+
+  const filtered = useMemo(
+    () =>
+      rows.filter((r) => {
+        if (tier !== "all" && capacityTier(r.capacityHigh).tier !== tier) return false;
+        if (aff === "high" && r.affinity < 70) return false;
+        if (aff === "medium" && (r.affinity < 40 || r.affinity >= 70)) return false;
+        if (aff === "low" && r.affinity >= 40) return false;
+        if (indOnly && r.indicators.length === 0) return false;
+        return true;
+      }),
+    [rows, tier, aff, indOnly]
+  );
+
   const columns: SortColumn<Row>[] = [
     {
       key: "donor",
@@ -100,12 +121,40 @@ export function ProspectsTable({ rows }: { rows: Row[] }) {
     },
   ];
   return (
-    <SortableTable
-      columns={columns}
-      rows={rows}
-      rowKey={(r) => r.id}
-      minWidth={760}
-      initialSort={{ key: "capacity", dir: "desc" }}
-    />
+    <div>
+      <div className="flex flex-wrap items-center gap-2 border-b border-forest-900/8 px-5 py-3">
+        <select value={tier} onChange={(e) => setTier(e.target.value)} className={sel}>
+          <option value="all">All capacity</option>
+          <option value="$$$$$">$$$$$ ($250K+)</option>
+          <option value="$$$$">$$$$ ($50K–$250K)</option>
+          <option value="$$$">$$$ ($10K–$50K)</option>
+          <option value="$$">$$ ($2K–$10K)</option>
+          <option value="$">$ (under $2K)</option>
+        </select>
+        <select value={aff} onChange={(e) => setAff(e.target.value)} className={sel}>
+          <option value="all">All affinity</option>
+          <option value="high">High (70+)</option>
+          <option value="medium">Medium (40–69)</option>
+          <option value="low">Low (&lt;40)</option>
+        </select>
+        <label className="flex cursor-pointer items-center gap-1.5 text-sm text-ink/65">
+          <input
+            type="checkbox"
+            checked={indOnly}
+            onChange={(e) => setIndOnly(e.target.checked)}
+            className="h-4 w-4 accent-forest-700"
+          />
+          Has wealth indicators
+        </label>
+        <span className="ml-auto text-xs text-ink/50">{filtered.length} prospects</span>
+      </div>
+      <SortableTable
+        columns={columns}
+        rows={filtered}
+        rowKey={(r) => r.id}
+        minWidth={760}
+        initialSort={{ key: "capacity", dir: "desc" }}
+      />
+    </div>
   );
 }

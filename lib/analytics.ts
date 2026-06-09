@@ -239,3 +239,35 @@ export function classifyDonors(
 export function prospectGap(capacityHigh: number, lifetime: number) {
   return { gap: Math.max(0, capacityHigh - lifetime), underutilized: capacityHigh > 0 && lifetime < capacityHigh * 0.2 };
 }
+
+// ---- pledges -----------------------------------------------------------
+
+export type InstallmentLite = {
+  amount: number | string;
+  status: string; // paid | pending | overdue | written_off
+  due_date: string;
+};
+
+/** Burn-down summary for a pledge from its installments. */
+export function pledgeSummary(installments: InstallmentLite[], totalAmount: number | string) {
+  const sumBy = (st: (s: string) => boolean) =>
+    installments.filter((i) => st(i.status)).reduce((s, i) => s + num(i.amount), 0);
+  const paid = sumBy((s) => s === "paid");
+  const writtenOff = sumBy((s) => s === "written_off");
+  const outstanding = sumBy((s) => s === "pending" || s === "overdue");
+  const overdue = installments.filter((i) => i.status === "overdue");
+  const overdueAmount = overdue.reduce((s, i) => s + num(i.amount), 0);
+  const upcoming = installments
+    .filter((i) => i.status === "pending" || i.status === "overdue")
+    .sort((a, b) => (a.due_date < b.due_date ? -1 : 1));
+  const total = num(totalAmount);
+  return {
+    paid,
+    outstanding,
+    writtenOff,
+    overdueCount: overdue.length,
+    overdueAmount,
+    nextDue: upcoming[0]?.due_date ?? null,
+    pctPaid: total ? Math.round((paid / total) * 100) : 0,
+  };
+}

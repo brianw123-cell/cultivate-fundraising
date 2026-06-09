@@ -19,6 +19,7 @@ import {
   Send,
   Gem,
   Stamp,
+  Handshake,
 } from "lucide-react";
 import { Logo } from "./Logo";
 
@@ -31,6 +32,7 @@ const nav = [
   { href: "/campaigns", label: "Campaigns", icon: Megaphone },
   { href: "/gifts", label: "Gifts", icon: HandCoins },
   { href: "/recurring", label: "Recurring", icon: Repeat },
+  { href: "/pledges", label: "Pledges", icon: Handshake },
   { href: "/appeals", label: "Appeals", icon: Send },
   { href: "/stewardship", label: "Stewardship", icon: Stamp },
   { href: "/reports", label: "Reports", icon: BarChart3 },

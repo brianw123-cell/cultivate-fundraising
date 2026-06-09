@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import { SortableTable, type SortColumn } from "@/components/SortableTable";
 import { Badge, avatarColor } from "@/components/ui";
 import { money, dateLabel, initials } from "@/lib/format";
+import { SEGMENT_DEFS } from "@/lib/analytics";
 
 type Row = {
   id: string;
@@ -15,9 +17,35 @@ type Row = {
   giftCount: number;
   lastGift: string | null;
   tags: string[] | null;
+  segKeys?: string[];
 };
 
+const sel =
+  "rounded-lg border border-forest-900/12 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-forest-500";
+
 export function DonorsTable({ rows }: { rows: Row[] }) {
+  const [seg, setSeg] = useState("all");
+  const [state, setState] = useState("all");
+  const [min, setMin] = useState("");
+  const [max, setMax] = useState("");
+
+  const states = useMemo(
+    () => Array.from(new Set(rows.map((r) => r.state).filter(Boolean))).sort() as string[],
+    [rows]
+  );
+
+  const filtered = useMemo(
+    () =>
+      rows.filter((r) => {
+        if (seg !== "all" && !r.segKeys?.includes(seg)) return false;
+        if (state !== "all" && r.state !== state) return false;
+        if (min && r.lifetime < Number(min)) return false;
+        if (max && r.lifetime > Number(max)) return false;
+        return true;
+      }),
+    [rows, seg, state, min, max]
+  );
+
   const columns: SortColumn<Row>[] = [
     {
       key: "donor",
@@ -70,5 +98,43 @@ export function DonorsTable({ rows }: { rows: Row[] }) {
       ),
     },
   ];
-  return <SortableTable columns={columns} rows={rows} rowKey={(r) => r.id} minWidth={680} />;
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2 border-b border-forest-900/8 px-5 py-3">
+        <select value={seg} onChange={(e) => setSeg(e.target.value)} className={sel}>
+          <option value="all">All segments</option>
+          {SEGMENT_DEFS.map((s) => (
+            <option key={s.key} value={s.key}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+        <select value={state} onChange={(e) => setState(e.target.value)} className={sel}>
+          <option value="all">All states</option>
+          {states.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+        <input
+          inputMode="numeric"
+          placeholder="Min $"
+          value={min}
+          onChange={(e) => setMin(e.target.value.replace(/[^0-9.]/g, ""))}
+          className={sel + " w-24"}
+        />
+        <input
+          inputMode="numeric"
+          placeholder="Max $"
+          value={max}
+          onChange={(e) => setMax(e.target.value.replace(/[^0-9.]/g, ""))}
+          className={sel + " w-24"}
+        />
+        <span className="ml-auto text-xs text-ink/50">{filtered.length} donors</span>
+      </div>
+      <SortableTable columns={columns} rows={filtered} rowKey={(r) => r.id} minWidth={680} />
+    </div>
+  );
 }

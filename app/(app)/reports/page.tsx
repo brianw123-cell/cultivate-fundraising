@@ -6,27 +6,62 @@ import { money, compactMoney } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-export default async function ReportsPage() {
+const SCOPES = ["all", "2026", "2025", "2024"];
+
+export default async function ReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ year?: string }>;
+}) {
+  const sp = await searchParams;
+  const scopeYear = sp.year && sp.year !== "all" ? Number(sp.year) : undefined;
   const [r, stmtDonors] = await Promise.all([
-    getReportsData(),
+    getReportsData(scopeYear),
     getTopStatementDonors(2025),
   ]);
   const maxBracket = Math.max(...r.brackets.map((b) => b.amount), 1);
   const maxYear = Math.max(...r.years.map((y) => y.amount), 1);
+  const scopeLabel = scopeYear ? String(scopeYear) : "All time";
 
   return (
     <div className="space-y-7">
-      <div>
-        <h1 className="font-display text-3xl font-semibold text-forest-900">Reports</h1>
-        <p className="text-sm text-ink/55">
-          Fundraising health, donor retention, and compliance at a glance
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="font-display text-3xl font-semibold text-forest-900">Reports</h1>
+          <p className="text-sm text-ink/55">
+            Fundraising health, donor retention, and compliance at a glance
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {SCOPES.map((y) => {
+            const active = (sp.year || "all") === y;
+            const href = y === "all" ? "/reports" : `/reports?year=${y}`;
+            return (
+              <Link
+                key={y}
+                href={href}
+                className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                  active
+                    ? "bg-forest-800 text-cream"
+                    : "border border-forest-900/10 bg-white text-ink/60 hover:border-forest-400"
+                }`}
+              >
+                {y === "all" ? "All time" : y}
+              </Link>
+            );
+          })}
+        </div>
       </div>
 
       {/* headline metrics */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Lifetime raised" value={compactMoney(r.totalRaised)} sub={`${r.totalGifts.toLocaleString()} gifts`} accent="#2D6A4F" />
-        <KpiCard label="Donor retention" value={`${r.retention}%`} sub="2025 vs. 2024" accent="#40916C" />
+        <KpiCard
+          label={scopeYear ? `Raised in ${scopeYear}` : "Lifetime raised"}
+          value={compactMoney(r.totalRaised)}
+          sub={`${r.totalGifts.toLocaleString()} gifts`}
+          accent="#2D6A4F"
+        />
+        <KpiCard label="Donor retention" value={`${r.retention}%`} sub="2025 vs. 2024 · all-time" accent="#40916C" />
         <KpiCard label="LYBUNT donors" value={r.lybunt.toString()} sub="gave in 2025, not yet 2026" accent="#D4A017" />
         <KpiCard label="SYBUNT donors" value={r.sybunt.toString()} sub="lapsed, gave some prior year" accent="#B0830F" />
       </div>
@@ -69,7 +104,7 @@ export default async function ReportsPage() {
 
         {/* gift size brackets */}
         <Card className="p-5">
-          <SectionHeading title="Gift size distribution" subtitle="All-time, by bracket" />
+          <SectionHeading title="Gift size distribution" subtitle={`${scopeLabel}, by bracket`} />
           <div className="space-y-3">
             {r.brackets.map((b) => (
               <div key={b.label}>

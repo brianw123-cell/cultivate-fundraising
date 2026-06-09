@@ -35,7 +35,7 @@ export default async function DonorsPage({
       </div>
 
       <Card className="overflow-hidden">
-        <DonorsTable rows={donors.slice(0, 120)} />
+        <DonorsTable rows={donors} />
       </Card>
     </div>
   );
