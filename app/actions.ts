@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { addMonths, addYears, format, parseISO } from "date-fns";
 import { getSupabase } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { CURRENT_YEAR, DEMO_TODAY, RECEIPT_PREFIX, processingFee } from "@/lib/config";
@@ -46,6 +47,74 @@ export async function writeOffPledge(pledgeId: string) {
   revalidatePath("/pledges");
   revalidatePath(`/pledges/${pledgeId}`);
   return { ok: true as const };
+}
+
+const PledgeSchema = z.object({
+  donorId: z.string().uuid(),
+  campaignId: z.string().uuid(),
+  total: z.number().positive().max(10_000_000),
+  frequency: z.enum(["monthly", "quarterly", "annually"]),
+  installments: z.number().int().min(1).max(120),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+export type PledgeInput = z.infer<typeof PledgeSchema>;
+
+function installmentDueDate(start: Date, frequency: string, index: number): string {
+  const d =
+    frequency === "annually"
+      ? addYears(start, index)
+      : addMonths(start, index * (frequency === "quarterly" ? 3 : 1));
+  return format(d, "yyyy-MM-dd");
+}
+
+export async function createPledge(raw: PledgeInput) {
+  const parsed = PledgeSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false as const, error: "Invalid pledge details." };
+  const input = parsed.data;
+
+  const sb = getSupabase();
+  const { data: org } = await sb.from("organizations").select("id").limit(1).single();
+  if (!org) return { ok: false as const, error: "No organization configured." };
+
+  const installmentAmount = Math.round((input.total / input.installments) * 100) / 100;
+
+  const { data: pledge, error: pErr } = await sb
+    .from("pledges")
+    .insert({
+      org_id: org.id,
+      donor_id: input.donorId,
+      campaign_id: input.campaignId,
+      total_amount: input.total,
+      frequency: input.frequency,
+      installment_count: input.installments,
+      installment_amount: installmentAmount,
+      start_date: input.startDate,
+      status: "active",
+    })
+    .select("id")
+    .single();
+  if (pErr || !pledge) {
+    return { ok: false as const, error: "Could not save pledge (is the pledges table set up?)." };
+  }
+
+  const start = parseISO(input.startDate);
+  const rows = Array.from({ length: input.installments }, (_, i) => {
+    const due = installmentDueDate(start, input.frequency, i);
+    return {
+      pledge_id: pledge.id,
+      org_id: org.id,
+      seq: i + 1,
+      due_date: due,
+      amount: installmentAmount,
+      status: due <= DEMO_TODAY ? "overdue" : "pending",
+    };
+  });
+  await sb.from("pledge_installments").insert(rows);
+
+  revalidatePath("/pledges");
+  revalidatePath(`/pledges/${pledge.id}`);
+  return { ok: true as const, pledgeId: pledge.id };
 }
 
 export async function recordPledgePayment(pledgeId: string) {

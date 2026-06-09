@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { Handshake, AlertTriangle, TrendingDown } from "lucide-react";
+import { Handshake, AlertTriangle, TrendingDown, Plus } from "lucide-react";
 import { getPledgesPageData } from "@/lib/data";
-import { Card, KpiCard, Badge, ProgressBar } from "@/components/ui";
+import { Card, KpiCard, Badge, ProgressBar, LinkButton } from "@/components/ui";
 import { money, compactMoney, dateLabel, titleCase } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -17,11 +17,16 @@ export default async function PledgesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-3xl font-semibold text-forest-900">Pledges</h1>
-        <p className="text-sm text-ink/55">
-          Multi-payment commitments with installment schedules and balances
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="font-display text-3xl font-semibold text-forest-900">Pledges</h1>
+          <p className="text-sm text-ink/55">
+            Multi-payment commitments with installment schedules and balances
+          </p>
+        </div>
+        <LinkButton href="/pledges/new">
+          <Plus size={16} /> New pledge
+        </LinkButton>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
