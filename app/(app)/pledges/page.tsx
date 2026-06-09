@@ -6,9 +6,9 @@ import { money, compactMoney, dateLabel, titleCase } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-const statusColor: Record<string, "green" | "gold" | "gray" | "red"> = {
+const statusColor: Record<string, "green" | "gold" | "gray" | "sage" | "red"> = {
   active: "green",
-  completed: "sage" as "gray",
+  completed: "sage",
   written_off: "red",
 };
 

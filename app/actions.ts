@@ -1,10 +1,10 @@
 "use server";
 
 import { z } from "zod";
-import { addMonths, addYears, format, parseISO } from "date-fns";
 import { getSupabase } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { CURRENT_YEAR, DEMO_TODAY, RECEIPT_PREFIX, processingFee } from "@/lib/config";
+import { installmentDueDates } from "@/lib/analytics";
 
 // ---- validation schemas ------------------------------------------------
 
@@ -60,14 +60,6 @@ const PledgeSchema = z.object({
 
 export type PledgeInput = z.infer<typeof PledgeSchema>;
 
-function installmentDueDate(start: Date, frequency: string, index: number): string {
-  const d =
-    frequency === "annually"
-      ? addYears(start, index)
-      : addMonths(start, index * (frequency === "quarterly" ? 3 : 1));
-  return format(d, "yyyy-MM-dd");
-}
-
 export async function createPledge(raw: PledgeInput) {
   const parsed = PledgeSchema.safeParse(raw);
   if (!parsed.success) return { ok: false as const, error: "Invalid pledge details." };
@@ -98,18 +90,16 @@ export async function createPledge(raw: PledgeInput) {
     return { ok: false as const, error: "Could not save pledge (is the pledges table set up?)." };
   }
 
-  const start = parseISO(input.startDate);
-  const rows = Array.from({ length: input.installments }, (_, i) => {
-    const due = installmentDueDate(start, input.frequency, i);
-    return {
+  const rows = installmentDueDates(input.startDate, input.frequency, input.installments).map(
+    (due, i) => ({
       pledge_id: pledge.id,
       org_id: org.id,
       seq: i + 1,
       due_date: due,
       amount: installmentAmount,
       status: due <= DEMO_TODAY ? "overdue" : "pending",
-    };
-  });
+    })
+  );
   await sb.from("pledge_installments").insert(rows);
 
   revalidatePath("/pledges");

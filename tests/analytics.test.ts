@@ -14,6 +14,7 @@ import {
   classifyDonors,
   prospectGap,
   pledgeSummary,
+  installmentDueDates,
 } from "@/lib/analytics";
 
 const gifts: any[] = [
@@ -211,5 +212,25 @@ describe("pledgeSummary", () => {
     expect(s.outstanding).toBe(0);
     expect(s.writtenOff).toBe(400);
     expect(s.pctPaid).toBe(20);
+  });
+});
+
+describe("installmentDueDates", () => {
+  it("spaces monthly installments", () => {
+    expect(installmentDueDates("2026-01-15", "monthly", 3)).toEqual([
+      "2026-01-15",
+      "2026-02-15",
+      "2026-03-15",
+    ]);
+  });
+  it("spaces quarterly and clamps end-of-month", () => {
+    expect(installmentDueDates("2026-01-31", "quarterly", 2)).toEqual(["2026-01-31", "2026-04-30"]);
+  });
+  it("spaces annual installments", () => {
+    expect(installmentDueDates("2024-06-01", "annually", 3)).toEqual([
+      "2024-06-01",
+      "2025-06-01",
+      "2026-06-01",
+    ]);
   });
 });

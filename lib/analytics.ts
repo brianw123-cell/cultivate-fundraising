@@ -1,6 +1,7 @@
 // Pure fundraising analytics. No database, no I/O — just data in, numbers out.
 // Everything here is deterministic and unit-tested (see tests/analytics.test.ts).
 
+import { addMonths, addYears, format, parseISO } from "date-fns";
 import { num, donorName } from "./format";
 import { CURRENT_YEAR, PRIOR_YEAR, PRIOR_YEAR_2, LAPSED_CUTOFF_DATE } from "./config";
 import type { GiftRow, DonorRow, CampaignRow, RecurringPlanRow, AppealRow } from "./types";
@@ -270,4 +271,16 @@ export function pledgeSummary(installments: InstallmentLite[], totalAmount: numb
     nextDue: upcoming[0]?.due_date ?? null,
     pctPaid: total ? Math.round((paid / total) * 100) : 0,
   };
+}
+
+/** Generate the due dates for a pledge's installment schedule. */
+export function installmentDueDates(startISO: string, frequency: string, count: number): string[] {
+  const start = parseISO(startISO);
+  return Array.from({ length: count }, (_, i) => {
+    const d =
+      frequency === "annually"
+        ? addYears(start, i)
+        : addMonths(start, i * (frequency === "quarterly" ? 3 : 1));
+    return format(d, "yyyy-MM-dd");
+  });
 }
