@@ -22,6 +22,7 @@ import {
   classifyDonors,
   prospectGap,
   pledgeSummary,
+  filterGifts,
   SEGMENT_DEFS,
 } from "./analytics";
 import type {
@@ -250,7 +251,7 @@ export async function getGiftsPageData(opts: {
   const donorById = new Map(donors.map((d) => [d.id, d]));
   const campaignById = new Map(campaigns.map((c) => [c.id, c]));
 
-  let rows = gifts.map((g) => ({
+  const enriched = gifts.map((g) => ({
     ...g,
     amount: num(g.amount),
     donor: donorById.get(g.donor_id),
@@ -258,23 +259,7 @@ export async function getGiftsPageData(opts: {
     campaignName: (g.campaign_id ? campaignById.get(g.campaign_id)?.name : null) || "—",
   }));
 
-  if (opts.method && opts.method !== "all")
-    rows = rows.filter((r) => r.payment_method === opts.method);
-  if (opts.campaign && opts.campaign !== "all")
-    rows = rows.filter((r) => r.campaign_id === opts.campaign);
-  if (opts.from) rows = rows.filter((r) => r.gift_date >= opts.from!);
-  if (opts.to) rows = rows.filter((r) => r.gift_date <= opts.to!);
-  if (opts.min != null) rows = rows.filter((r) => r.amount >= opts.min!);
-  if (opts.max != null) rows = rows.filter((r) => r.amount <= opts.max!);
-  if (opts.q) {
-    const n = opts.q.toLowerCase();
-    rows = rows.filter(
-      (r) =>
-        r.donorName.toLowerCase().includes(n) ||
-        (r.receipt_number || "").toLowerCase().includes(n)
-    );
-  }
-
+  const rows = filterGifts(enriched, opts);
   rows.sort((a, b) => (a.gift_date < b.gift_date ? 1 : -1));
   const total = rows.reduce((s, r) => s + r.amount, 0);
   return { rows: rows.slice(0, 150), totalCount: rows.length, totalAmount: total, campaigns };

@@ -273,6 +273,45 @@ export function pledgeSummary(installments: InstallmentLite[], totalAmount: numb
   };
 }
 
+// ---- gift list filtering -------------------------------------------------
+
+export type GiftFilterOpts = {
+  q?: string;
+  method?: string;
+  campaign?: string;
+  from?: string;
+  to?: string;
+  min?: number;
+  max?: number;
+};
+
+export type FilterableGift = {
+  amount: number;
+  gift_date: string;
+  payment_method: string;
+  campaign_id: string | null;
+  donorName: string;
+  receipt_number: string | null;
+};
+
+/** Apply the Gifts-page filters (all composable; "all"/undefined = no-op). */
+export function filterGifts<T extends FilterableGift>(rows: T[], opts: GiftFilterOpts): T[] {
+  let out = rows;
+  if (opts.method && opts.method !== "all") out = out.filter((r) => r.payment_method === opts.method);
+  if (opts.campaign && opts.campaign !== "all") out = out.filter((r) => r.campaign_id === opts.campaign);
+  if (opts.from) out = out.filter((r) => r.gift_date >= opts.from!);
+  if (opts.to) out = out.filter((r) => r.gift_date <= opts.to!);
+  if (opts.min != null) out = out.filter((r) => r.amount >= opts.min!);
+  if (opts.max != null) out = out.filter((r) => r.amount <= opts.max!);
+  if (opts.q) {
+    const n = opts.q.toLowerCase();
+    out = out.filter(
+      (r) => r.donorName.toLowerCase().includes(n) || (r.receipt_number || "").toLowerCase().includes(n)
+    );
+  }
+  return out;
+}
+
 /** Generate the due dates for a pledge's installment schedule. */
 export function installmentDueDates(startISO: string, frequency: string, count: number): string[] {
   const start = parseISO(startISO);

@@ -15,6 +15,7 @@ import {
   prospectGap,
   pledgeSummary,
   installmentDueDates,
+  filterGifts,
 } from "@/lib/analytics";
 
 const gifts: any[] = [
@@ -212,6 +213,37 @@ describe("pledgeSummary", () => {
     expect(s.outstanding).toBe(0);
     expect(s.writtenOff).toBe(400);
     expect(s.pctPaid).toBe(20);
+  });
+});
+
+describe("filterGifts", () => {
+  const rows = [
+    { amount: 25, gift_date: "2026-01-10", payment_method: "card", campaign_id: "a", donorName: "Jane Doe", receipt_number: "RHF-2026-00001" },
+    { amount: 5000, gift_date: "2026-03-05", payment_method: "check", campaign_id: "b", donorName: "Acme Bank", receipt_number: "RHF-2026-00002" },
+    { amount: 250, gift_date: "2025-11-20", payment_method: "card", campaign_id: "a", donorName: "Jane Doe", receipt_number: "RHF-2025-00900" },
+    { amount: 100, gift_date: "2026-02-14", payment_method: "ach", campaign_id: null, donorName: "Bob Roe", receipt_number: null },
+  ];
+
+  it("no-ops with empty/'all' filters", () => {
+    expect(filterGifts(rows, {})).toHaveLength(4);
+    expect(filterGifts(rows, { method: "all", campaign: "all" })).toHaveLength(4);
+  });
+  it("filters by method, campaign, date range, amount range", () => {
+    expect(filterGifts(rows, { method: "card" })).toHaveLength(2);
+    expect(filterGifts(rows, { campaign: "b" })).toHaveLength(1);
+    expect(filterGifts(rows, { from: "2026-01-01" })).toHaveLength(3);
+    expect(filterGifts(rows, { to: "2026-01-31" })).toHaveLength(2);
+    expect(filterGifts(rows, { min: 200 })).toHaveLength(2);
+    expect(filterGifts(rows, { max: 100 })).toHaveLength(2);
+  });
+  it("searches donor name and receipt number, case-insensitive", () => {
+    expect(filterGifts(rows, { q: "jane" })).toHaveLength(2);
+    expect(filterGifts(rows, { q: "00900" })).toHaveLength(1);
+    expect(filterGifts(rows, { q: "zzz" })).toHaveLength(0);
+  });
+  it("composes filters (AND semantics)", () => {
+    expect(filterGifts(rows, { method: "card", min: 200, from: "2025-01-01" })).toHaveLength(1);
+    expect(filterGifts(rows, { method: "card", min: 200, from: "2026-01-01" })).toHaveLength(0);
   });
 });
 
