@@ -3,7 +3,7 @@ import { ArrowLeft, Users } from "lucide-react";
 import { getGiveCampaign, getActiveCampaignsForForm } from "@/lib/data";
 import { DonationForm } from "@/components/DonationForm";
 import { GoalThermometer } from "@/components/GoalThermometer";
-import { PublicHeader, PublicFooter } from "../page";
+import { PublicHeader, PublicFooter } from "@/components/PublicChrome";
 import { money, dateLabel } from "@/lib/format";
 
 export const dynamic = "force-dynamic";

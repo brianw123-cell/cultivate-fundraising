@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Check, ArrowRight, Mail } from "lucide-react";
 import { getReceipt } from "@/lib/data";
-import { PublicHeader, PublicFooter } from "../page";
+import { PublicHeader, PublicFooter } from "@/components/PublicChrome";
 import { money, titleCase } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
