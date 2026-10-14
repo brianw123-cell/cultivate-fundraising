@@ -12,7 +12,6 @@ export default defineConfig({
     environment: "node",
     coverage: {
       provider: "v8",
-      all: true,
       include: ["lib/**/*.ts"],
       exclude: ["lib/types.ts"],
       reporter: ["text", "text-summary"],
